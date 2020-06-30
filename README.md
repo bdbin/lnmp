@@ -19,7 +19,7 @@ The script is written in Shell and can deploy the latest version of Nginx/MariaD
 ### installation
 
 ```bash
-curl -o- https://github.com/bdbin/lnmp/blob/master/ilnmp.sh | bash
+bash ilnmp.sh
 ```
 
 ### Software installation path description
