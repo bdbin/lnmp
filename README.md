@@ -18,7 +18,9 @@ The script is written in Shell and can deploy the latest version of Nginx/MariaD
 
 ### installation
 
-```bash
+```
+wget --no-check-certificate https://raw.githubusercontent.com/bdbin/lnmp/master/ilnmp.sh
+chmod 755 ilnmp.sh
 bash ilnmp.sh
 ```
 
