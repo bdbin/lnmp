@@ -2,23 +2,23 @@
 export PATH=$PATH:/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
 
 # ILNMP（Installation Linux Nginx MySQL）Unattended PHP Development Environment Tool
-# ILNMP Version: v0.7
-# Author: Renwole
-# Last update 2020/7/16
+# Version: v0.8
+# Author: Renwole.com
+# Last update 03/10/2020
 # Script support highly customized
 # Thank you for using Renwole script
 
 # Application Version,Can be changed as needed
-php_v="7.4.8"
-nginx_v="1.19.1"
+php_v="7.4.11"
+nginx_v="1.19.3"
 libzip_v="1.7.3"
 libiconv_v="1.16"
 mysql_v="8.0.21"
-mariadb_v="10.5.4"
+mariadb_v="10.5.5"
 phpmyadmin_v="5.0.2"
 
 # Application installation directory,Can be changed as needed
-soft_dir=/opt
+soft_dir="/opt"
 web_dir="/apps/web/default"
 startup_dir="/lib/systemd/system"
 php_install_dir="/apps/server/php"
@@ -32,6 +32,7 @@ mariadb_data_dir="/apps/server/mariadb/data"
 timezone="Asia/Shanghai"
 dbroot_password="I#p1%sX@Renwole"
 cpu_thread=$(grep "processor" /proc/cpuinfo | sort -u | wc -l)
+linux_release=$(cat /etc/*-release | grep -oE  "[0-9.]+" | head -n2 |tail -n1)
 
 # Application package download
 mirrors="http://mirrors.ustc.edu.cn"
@@ -42,6 +43,24 @@ libzip="https://libzip.org/download/libzip-${libzip_v}.tar.gz"
 phpmyadmin="https://files.phpmyadmin.net/phpMyAdmin/${phpmyadmin_v}/phpMyAdmin-${phpmyadmin_v}-all-languages.tar.gz"
 mysql=${mirrors}/mysql-ftp/Downloads/MySQL-8.0/mysql-${mysql_v}-linux-glibc2.12-x86_64.tar.xz
 mariadb="${mirrors}/mariadb/mariadb-${mariadb_v}/bintar-linux-systemd-x86_64/mariadb-${mariadb_v}-linux-systemd-x86_64.tar.gz"
+
+# Text coloring
+Redecho(){
+  printf '\033[31m%s\033[0m\n' "$1"
+}
+
+Greenecho(){
+  printf '\033[32m%s\033[0m\n' "$1"
+}
+
+Yellowecho(){
+  printf '\033[33m%s\033[0m\n' "$1"
+}
+
+Check_NetWork(){
+  NetWork_status=`curl -sI https://renwole.com | awk '/HTTP/{print $2}'`
+  [[ "${NetWork_status}" -ne 200 ]] && Redecho "No Internet!" && exit 1
+}
 
 # System initialization
 Sysytem_Init(){
@@ -63,32 +82,45 @@ EOF
 # Install common independent dependencies.
 Generic_packages(){
 	[[ ! -e "/etc/yum.repos.d/epel.repo" ]] && dnf -y install epel-release
+  dnf makecache
 	[[ -e "/etc/yum.repos.d/CentOS-PowerTools.repo" ]] && dnf config-manager --set-enabled PowerTools
 	for packages in wget tar curl gcc gcc-c++ make cmake3 openssl openssl-devel jemalloc jemalloc-devel;
-	do dnf -y install ${packages}; done && ln -sf /usr/bin/cmake3 /usr/bin/cmake > /dev/null 2>&1
+	do dnf -y install ${packages}; done
+  ln -sf /usr/bin/cmake3 /usr/bin/cmake > /dev/null 2>&1
+
+  # CentOS 8 mysql: error while loading shared libraries: libncurses.so.5
+  dnf install ncurses ncurses-compat-libs -y
 }
 
 # Nginx dependent packages
 Nginx_with_packages(){
-	for packages in gd gd-devel pcre pcre-devel pcre2 pcre2-devel automake zlib zlib-devel jemalloc jemalloc-devel;
+	for packages in gd gd-devel pcre pcre-devel pcre2 pcre2-devel automake zlib zlib-devel;
 	do dnf -y install ${packages}; done
 }
 
 # Installation Nginx
 Install_Nginx(){
-	[[ $(id -u www >/dev/null 2>&1) != "0" ]] && groupadd www > /dev/null 2>&1 && useradd -s /sbin/nologin -M -g www www > /dev/null 2>&1
-	[[ ! -e "${web_dir}" ]] && mkdir -p ${web_dir} && [[ ! -e "${nginx_install_dir}" ]] && mkdir -p ${nginx_install_dir}
-	ulimit -SHn 65535 && cd ${soft_dir} && wget -c ${nginx} && tar zxvf nginx-${nginx_v}.tar.gz && cd nginx-${nginx_v}
+	# [[ $(id -u www >/dev/null 2>&1) != "0" ]] && 
+  groupadd www > /dev/null 2>&1
+  useradd -s /sbin/nologin -M -g www www > /dev/null 2>&1
+	[[ ! -e "${web_dir}" ]] && mkdir -p ${web_dir}
+  [[ ! -e "${nginx_install_dir}" ]] && mkdir -p ${nginx_install_dir}
+	ulimit -SHn 65535
+  cd ${soft_dir}
+  wget -c ${nginx}
+  tar zxvf nginx-${nginx_v}.tar.gz
+  cd nginx-${nginx_v}
 	sed -i 's@CFLAGS="$CFLAGS -g"@#CFLAGS="$CFLAGS -g"@' auto/cc/gcc
 	./configure --prefix=${nginx_install_dir} --user=www --group=www --with-http_v2_module --with-http_ssl_module --with-http_realip_module --with-http_flv_module --with-http_mp4_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_secure_link_module --with-http_stub_status_module --with-http_auth_request_module --with-http_image_filter_module --with-http_slice_module --with-threads --with-file-aio --with-stream --with-stream_ssl_module --with-pcre --with-pcre-jit --with-ld-opt='-ljemalloc'
-	make -j ${cpu_thread} && make install
+	make -j ${cpu_thread}
+  make install
 
 	# Whether the installation is successful
 	if [[ -e "${nginx_install_dir}/sbin/nginx" ]]; then
 		rm -rf ${soft_dir}/nginx-${nginx_v}
 	else
 		rm -rf ${nginx_install_dir}
-		printf "\e[31mERROR: \033[0mNginx install failed, Please Contact the author! \n"
+    Redecho "ERROR: Nginx install failed, Please Contact the author!"
 		exit 1
 	fi
 
@@ -209,15 +241,17 @@ ExecStop=/bin/kill -s QUIT $MAINPID
 WantedBy=multi-user.target
 EOF
 	echo 'PATH=$PATH:'${nginx_install_dir}'/sbin' > /etc/profile.d/nginx-renwole.sh
-	systemctl enable nginx.service && systemctl start nginx.service
+	systemctl enable nginx.service
+  systemctl start nginx.service
 }
 
 # MariaDB Binary installation
 Install_MariaDB(){
 	useradd -M -s /sbin/nologin mariadb > /dev/null 2>&1
 	[[ ! -e "${mariadb_install_dir}" ]] && mkdir -p ${mariadb_install_dir}
-	echo "-=-=-=-=-=- Start installing MariaDB -=-=-=-=-=-"
-	cd ${soft_dir} && wget -c ${mariadb} && tar zxf mariadb-${mariadb_v}-linux-systemd-x86_64.tar.gz
+	cd ${soft_dir}
+  wget -c ${mariadb}
+  tar zxf mariadb-${mariadb_v}-linux-systemd-x86_64.tar.gz
 	\mv mariadb-${mariadb_v}-linux-systemd-x86_64/* ${mariadb_install_dir}
 
 	# MariaDB whether the installation is successful
@@ -225,7 +259,7 @@ Install_MariaDB(){
 		rm -rf mariadb-${mariadb_v}-linux-systemd-x86_64
 	else
 		rm -rf ${mariadb_install_dir}
-		printf "\e[31mERROR: \033[0mMariaDB install failed, Please contact the author\n"
+    Redecho "ERROR: MariaDB install failed, Please contact the author!"
 		exit 1
 	fi
 
@@ -236,7 +270,7 @@ Install_MariaDB(){
 	sed -i 's@executing mysqld_safe@executing mysqld_safe\nexport LD_PRELOAD=/usr/lib64/libjemalloc.so@' ${mariadb_install_dir}/bin/mysqld_safe
 	echo 'PATH=$PATH:'${mariadb_install_dir}'/bin' > /etc/profile.d/mariadb-renwole.sh
 
-    # Import MariaDB configuration file
+  # Import MariaDB configuration file
 	cat > /etc/my.cnf << EOF
 [client]
 port = 3306
@@ -320,7 +354,9 @@ EOF
 	# Initialize MariaDB configuration
 	chown -R mariadb:mariadb ${mariadb_install_dir}
 	${mariadb_install_dir}/scripts/mysql_install_db --user=mariadb --basedir=${mariadb_install_dir} --datadir=${mariadb_data_dir}
-	chmod +x /etc/init.d/mysqld && systemctl enable mysqld && systemctl start mysqld
+	chmod +x /etc/init.d/mysqld
+  systemctl enable mysqld
+  systemctl start mysqld
 	${mariadb_install_dir}/bin/mysql -e "grant all privileges on *.* to root@'127.0.0.1' identified by \"${dbroot_password}\" with grant option;"
 	${mariadb_install_dir}/bin/mysql -e "grant all privileges on *.* to root@'localhost' identified by \"${dbroot_password}\" with grant option;"
 	${mariadb_install_dir}/bin/mysql -uroot -p${dbroot_password} -e "delete from mysql.user where Password='';"
@@ -328,16 +364,19 @@ EOF
 	${mariadb_install_dir}/bin/mysql -uroot -p${dbroot_password} -e "delete from mysql.proxies_priv where Host!='localhost';"
 	${mariadb_install_dir}/bin/mysql -uroot -p${dbroot_password} -e "drop database test;"
 	${mariadb_install_dir}/bin/mysql -uroot -p${dbroot_password} -e "reset master;"
-	rm -rf /etc/ld.so.conf.d/{mysql,mariadb}*.conf && echo "${mariadb_install_dir}/lib" > /etc/ld.so.conf.d/mariadb-renwole.conf && ldconfig
-	echo "-=-=-=- MariaDB installing Successfully -=-=-=-"
+	rm -rf /etc/ld.so.conf.d/{mysql,mariadb}*.conf
+  echo "${mariadb_install_dir}/lib" > /etc/ld.so.conf.d/mariadb-renwole.conf
+  ldconfig
+  Greenecho "MariaDB installing Successfully"
 }
 
 # MySQL Binary installation
 Install_MySQL() {
 	useradd -M -s /sbin/nologin mysql > /dev/null 2>&1
 	[[ ! -e "${mysql_install_dir}" ]] && mkdir -p ${mysql_install_dir}
-	echo "-=-=-=-=-=- Start installing MySQL -=-=-=-=-=-"
-	cd ${soft_dir} && wget -c ${mysql} && tar xJf mysql-${mysql_v}-linux-glibc2.12-x86_64.tar.xz
+	cd ${soft_dir}
+  wget -c ${mysql}
+  tar xJf mysql-${mysql_v}-linux-glibc2.12-x86_64.tar.xz
 	\mv mysql-${mysql_v}-linux-glibc2.12-x86_64/* ${mysql_install_dir}
 	
 	# MySQL whether the installation is successful
@@ -345,7 +384,7 @@ Install_MySQL() {
 		rm -rf mysql-${mysql_v}-linux-glibc2.12-x86_64
 	else
 		rm -rf ${mysql_install_dir}
-		printf "\e[31mERROR: \033[0mMySQL install failed, Please contact the author \n"
+    Redecho "ERROR: MySQL install failed, Please contact the author!"
 		exit 1
 	fi
 
@@ -444,15 +483,20 @@ EOF
 	# Initialize MariaDB configuration
 	chown -R mysql:mysql ${mysql_install_dir}
 	${mysql_install_dir}/bin/mysqld --initialize-insecure --user=mysql --basedir=${mysql_install_dir} --datadir=${mysql_data_dir}
-	chmod +x /etc/init.d/mysqld && systemctl enable mysqld && systemctl start mysqld
-  	${mysql_install_dir}/bin/mysql -uroot -hlocalhost -e "create user root@'127.0.0.1' identified by \"${dbroot_password}\";"
-  	${mysql_install_dir}/bin/mysql -uroot -hlocalhost -e "grant all privileges on *.* to root@'127.0.0.1' with grant option;"
+	chmod +x /etc/init.d/mysqld
+  systemctl enable mysqld
+  systemctl start mysqld
+
+  ${mysql_install_dir}/bin/mysql -uroot -hlocalhost -e "create user root@'127.0.0.1' identified by \"${dbroot_password}\";"
+  ${mysql_install_dir}/bin/mysql -uroot -hlocalhost -e "grant all privileges on *.* to root@'127.0.0.1' with grant option;"
  	${mysql_install_dir}/bin/mysql -uroot -hlocalhost -e "grant all privileges on *.* to root@'localhost' with grant option;"
-  	${mysql_install_dir}/bin/mysql -uroot -hlocalhost -e "alter user root@'localhost' identified by \"${dbroot_password}\";"
-  	${mysql_install_dir}/bin/mysql -uroot -p${dbroot_password} -e "reset master;"
-  	rm -rf /etc/ld.so.conf.d/{mysql,mariadb,percona,alisql}*.conf
-  	echo "${mysql_install_dir}/lib" > /etc/ld.so.conf.d/mysql-renwole.conf && ldconfig
-  	echo "-=-=-=-=- MySQL installing Successfully -=-=-=-"
+  ${mysql_install_dir}/bin/mysql -uroot -hlocalhost -e "alter user root@'localhost' identified by \"${dbroot_password}\";"
+  ${mysql_install_dir}/bin/mysql -uroot -p${dbroot_password} -e "reset master;"
+
+  rm -rf /etc/ld.so.conf.d/{mysql,mariadb,percona,alisql}*.conf
+  echo "${mysql_install_dir}/lib" > /etc/ld.so.conf.d/mysql-renwole.conf
+  ldconfig
+  Greenecho "MySQL installing Successfully"
 }
 
 # PHP dependencies
@@ -467,7 +511,7 @@ PHP_with_libiconv() {
 }
 
 PHP_with_libzip() {
-	[[ ! -e "/usr/lib64/libzip.so" ]] && cd ${soft_dir} && wget -c ${libzip} && tar xzf libzip-${libzip_v}.tar.gz
+	[[ ! -e "/usr/lib64/libzip.so" ]] && cd ${soft_dir} && wget --no-check-certificate -c ${libzip} && tar xzf libzip-${libzip_v}.tar.gz
 	cd libzip-${libzip_v} && mkdir build && cd build && cmake -DCMAKE_INSTALL_PREFIX=/usr .. && make -j ${cpu_thread}
 	make install && rm -rf ${soft_dir}/libzip-${libzip_v}
 }
@@ -477,7 +521,8 @@ Check_library() {
 	ln -sf /usr/lib64/liblber* /usr/lib > /dev/null 2>&1
 	ln -sf /usr/local/lib/libiconv.so.2 /usr/lib > /dev/null 2>&1
 	echo "/usr/lib64" > /etc/ld.so.conf.d/local-renwole.conf
-	echo "/usr/local/lib" > /etc/ld.so.conf.d/local-renwole.conf && ldconfig
+	echo "/usr/local/lib" > /etc/ld.so.conf.d/local-renwole.conf
+  ldconfig
 }
 
 # installation PHP
@@ -491,7 +536,7 @@ Install_PHP() {
 		rm -rf ${soft_dir}/php-${php_v}
 	else
 		rm -rf ${php_install_dir}
-		printf "\e[31mERROR: \033[0mPHP install Failed, Please Contact the author\n"
+    Redecho "ERROR: PHP install Failed, Please Contact the author!"
 		exit 1
 	fi
 
@@ -571,88 +616,91 @@ ExecReload=/bin/kill -USR2 $MAINPID
 [Install]
 WantedBy=multi-user.target
 EOF
-	systemctl enable php-fpm.service && systemctl restart php-fpm.service
+	systemctl enable php-fpm.service
+  systemctl restart php-fpm.service
 }
 
 Install_phpMyAdmin() {
-	echo "-=-=-=-=- Start installing phpMyAdmin -=-=-=-=-"
-	cd ${soft_dir} && wget -c ${phpmyadmin} && tar xzf phpMyAdmin-${phpmyadmin_v}-all-languages.tar.gz
+	cd ${soft_dir}
+  wget -c ${phpmyadmin}
+  tar xzf phpMyAdmin-${phpmyadmin_v}-all-languages.tar.gz
 	\mv phpMyAdmin-${phpmyadmin_v}-all-languages ${web_dir}/phpmyadmin
 	\cp ${web_dir}/phpmyadmin/{config.sample.inc.php,config.inc.php}
 	mkdir ${web_dir}/phpmyadmin/{upload,save}
+
 	sed -i "s@UploadDir.*@UploadDir'\] = 'upload';@" ${web_dir}/phpmyadmin/config.inc.php
 	sed -i "s@SaveDir.*@SaveDir'\] = 'save';@" ${web_dir}/phpmyadmin/config.inc.php
 	sed -i "s@host'\].*@host'\] = '127.0.0.1';@" ${web_dir}/phpmyadmin/config.inc.php
 	sed -i "s@blowfish_secret.*;@blowfish_secret\'\] = \'$(date|base64|head -c 32)\';@" ${web_dir}/phpmyadmin/config.inc.php
-	echo "<?phpinfo()?>" >${web_dir}/php.php
-	chmod 755 -R ${web_dir}/phpmyadmin/ && chown www.www -R ${web_dir}
-	[[ -e "${web_dir}/phpmyadmin" ]] && rm -rf phpMyAdmin-${phpmyadmin_v}-all-languages &&
-	printf "phpMyAdmin\e[32m [  OK  ] \033[0m \n"
+
+	echo "<?phpinfo()?>" > ${web_dir}/php.php
+	chmod 755 -R ${web_dir}/phpmyadmin
+  chown www.www -R ${web_dir}
+	[[ -e "${web_dir}/phpmyadmin" ]] && Greenecho "phpMyAdmin [OK]"
 }
 
 # Check if the service is started
 Checkservice(){
+  echo "=============================================="
 	if [[ -e "${nginx_install_dir}/sbin/nginx" ]]; then
 		if ps -A | grep nginx > /dev/null 2>&1; then
-			printf "Nginx Start\e[32m [  OK  ] \033[0m\n"
+      Greenecho "Nginx Start [OK]"
 		else
-			printf "\e[31mERROR:\033[0m Nginx Start Failure \033[0m \n"
+      Redecho "ERROR: Nginx Start Failure"
 		fi
 	else
-		printf "\e[1mWARNING:\033[0m Nginx is not installed \n"
-		
+    Yellowecho "WARNING: Nginx is not installed"		
 	fi
 
 	if [[ -d "${mariadb_install_dir}/scripts" ]]; then
 		if ps -A | grep mysqld > /dev/null 2>&1; then
-			
-			printf "MariaDB Start\e[32m [  OK  ] \033[0m\n"
+      Greenecho "MariaDB Start [OK]"
 		else
-			printf "\e[31mERROR:\033[0m MariaDB Start Failure \033[0m \n"
+      Redecho "ERROR: MariaDB Start Failure"
 		fi
 	else
-		printf "\e[1mWARNING:\033[0m MariaDB is not installed \n"
+    Yellowecho "WARNING: MariaDB is not installed"
 	fi
 
 	if [[ -d "${mysql_install_dir}/support-files" ]]; then
 		if ps -A | grep mysqld > /dev/null 2>&1; then
-			printf "MySQL Start\e[32m [  OK  ] \033[0m\n"
+      Greenecho "MySQL Start [OK]"
 		else
-			printf "\e[31mERROR:\033[0m MySQL Start Failure \033[0m \n"
+      Redecho "ERROR: MySQL Start Failure"
 		fi
 	else
-		printf "\e[1mWARNING:\033[0m MySQL is not installed \n"
+    Yellowecho "WARNING: MySQL is not installed"
 	fi
 
 	if [[ -e "${php_install_dir}/bin/phpize" ]]; then
 		if ps -A | grep php-fpm > /dev/null 2>&1; then
-			printf "PHP Start\e[32m [  OK  ] \033[0m\n"
+      Greenecho "PHP Start [OK]"
 		else
-			printf "\e[31mERROR:\033[0m PHP Start Failure \033[0m \n"
+      Redecho "ERROR: PHP Start Failure"
 		fi
 	else
-		printf "\e[1mWARNING:\033[0m PHP is not installed \n"
+    Yellowecho "WARNING: PHP is not installed"
 	fi
 	echo "
--=-==-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+==============================================
 Thank you for using Renwole script       
--=-==-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+==============================================
 WebRoot:
 wwwroot: ${web_dir}
 phpinfo: http://IP/php.php
 phpMyAdmin: http://IP/phpmyadmin/index.php
--=-==-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+==============================================
 Database information:
 account: root
 password: ${dbroot_password}
--=-==-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-"
+=============================================="
 }
 
 # Select Web Server
 while :; do
 	read -e -p "Whether to install Web service? [y/n]:" web_yn
 	if [[ ! "${web_yn}" =~ ^[y,n]$ ]]; then
-		printf "\e[31mERROR: \033[0mPlease enter y or n\n"
+    Redecho "ERROR: Please enter y or n"
 	else
 		if [[ "${web_yn}" == "y" ]]; then
 			break
@@ -666,7 +714,7 @@ done
 while :; do
 	read -e -p "Whether to install the database? [y/n]: " db_yn
 	if [[ ! "${db_yn}" =~ ^[y,n]$ ]]; then
-		printf "\e[31mERROR: \033[0mPlease enter y or n\n"
+    Redecho "ERROR: Please enter y or n"
 	else
 		if [[ "${db_yn}" == "y" ]]; then
 			while :; do
@@ -676,7 +724,7 @@ while :; do
 				read -e -p "Please enter the number (Default 1 Enter) :" db_option
 				db_option=${db_option:-1}
 				if [[ ! ${db_option} =~ ^[1-2]$ ]]; then
-					printf "\e[31mERROR: \033[0mPlease enter 1 or 2\n"
+          Redecho "ERROR: Please enter 1 or 2"
 				else
 					break
 				fi
@@ -690,7 +738,7 @@ done
 while :; do
 	read -e -p "Whether to install PHP? [y/n]: " php_yn
 	if [[ ! ${php_yn} =~ ^[y,n]$ ]]; then
-		printf "\e[31mERROR: \033[0mPlease enter y or n\n"
+    Redecho "ERROR: Please enter y or n"
 	else
 		if [[ "${php_yn}" == "y" ]]; then
 			break
@@ -702,12 +750,12 @@ done
 
 # Select phpMyadmin
 while :; do
-	read -e -p "Whether to install phpMyadmin? [y/n]: " phpmyadmin_yn
+  read -e -p "Whether to install phpMyadmin? [y/n]: " phpmyadmin_yn
 	if [[ ! ${phpmyadmin_yn} =~ ^[y,n]$ ]]; then
-		printf "\e[31mERROR: \033[0mPlease enter y or n\n"
-	else
-		if [[ "${phpmyadmin_yn}" == "y" ]]; then
-			break
+    Redecho "ERROR: Please enter y or n"
+  else
+    if [[ "${phpmyadmin_yn}" == "y" ]]; then
+      break
 		else
 			break
 		fi
@@ -716,60 +764,54 @@ done
 
 # Must be root user to execute
 if [[ $(whoami) != "root" ]]; then
-    printf "\e[31mERROR: \033[0mMust be root user to install \n"
-    exit 1
-else
-	command -v dnf > /dev/null 2>&1 || { [[ -e "/etc/redhat-release" ]] && yum upgrade python* -y && yum -y install dnf; }
-	command -v lsb_release > /dev/null 2>&1 || { [[ -e "/etc/redhat-release" ]] && dnf -y install redhat-lsb-core; }
-	command -v lsb_release > /dev/null 2>&1 || { printf "\e[31mERROR: \033[0mUnable to obtain system release \n"; exit 1; }
+  Redecho "Must be root user to install"
+  exit 1
 fi
 
-OS_Version=$(lsb_release -sr | awk -F. '{print $1}')
-if [[ "${OS_Version}" -ge 7 ]]; then
-	Sysytem_Init && Generic_packages
+if [[ "${linux_release}" -lt 7 ]]; then
+  Redecho "Must be Centos7.x or Centos8.x system to install"
+  exit 1
 else
-	printf "\e[31mERROR: \033[0mMust be Centos7.x or Centos8.x system to install \n"
-	exit 1
+  command -v dnf > /dev/null 2>&1 || { [[ -e "/etc/redhat-release" ]] && yum upgrade python* -y && yum -y install dnf; }
+  Check_NetWork
+  Sysytem_Init
+  Generic_packages
 fi
 
-# Install Web server with conditions.
+# Install Web server with conditions
 case "${web_yn}" in
   y)
-	Nginx_with_packages
-    Install_Nginx
-    ;;
+  Nginx_with_packages
+  Install_Nginx
+  ;;
 esac
 
-# Install Database with conditions.
+# Install Database with conditions
 case "${db_option}" in
   1)
 	Install_MariaDB
-    ;;
+  ;;
   2)
-    Install_MySQL
-    ;;
+  Install_MySQL
+  ;;
 esac
 
-# Install PHP with conditions.
+# Install PHP with conditions
 case "${php_yn}" in
   y)
 	PHP_with_packages
-    PHP_with_libiconv
-    PHP_with_libzip
-    Check_library
-    Install_PHP
-    ;;
+  PHP_with_libiconv
+  PHP_with_libzip
+  Check_library
+  Install_PHP
+  ;;
 esac
 
-# Install phpMyadmin with conditions.
+# Install phpMyadmin with conditions
 case "${php_yn}" in
   y)
-    Install_phpMyAdmin
-    ;;
+  Install_phpMyAdmin
+  ;;
 esac
 
-if [[ -e "/apps/server" ]]; then
-	Checkservice
-else
-	echo "ILNMP installation failed, please contact the author"
-fi
+Checkservice
